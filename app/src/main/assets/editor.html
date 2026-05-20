@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Save File Editor</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0f172a; color: #e2e8f0; font-family: sans-serif; min-height: 100vh; }
+
+/* ── upload ── */
+#upload-screen { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; }
+#drop-zone { border:2px dashed #334155; border-radius:16px; padding:44px 32px; text-align:center; cursor:pointer; background:#111827; max-width:340px; width:100%; transition:border-color .2s; }
+#drop-zone:hover,#drop-zone.drag-over { border-color:#7c3aed; }
+#error-box { display:none; margin-top:20px; padding:10px 16px; background:#450a0a; border:1px solid #ef4444; border-radius:8px; color:#fca5a5; font-size:13px; max-width:340px; width:100%; }
+
+/* ── editor ── */
+#editor-screen { display:none; flex-direction:column; min-height:100vh; }
+.header { background:#1e1b4b; padding:10px 14px; border-bottom:1px solid #4c1d95; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; position:sticky; top:0; z-index:20; }
+.header-info { min-width:0; flex:1; }
+.header-title { font-size:14px; font-weight:800; color:#c4b5fd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.header-sub { font-size:11px; color:#818cf8; margin-top:1px; }
+.header-btns { display:flex; gap:6px; flex-shrink:0; }
+.btn { padding:6px 12px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600; border:none; white-space:nowrap; }
+.btn-ghost  { background:transparent; border:1px solid #334155 !important; color:#94a3b8; }
+.btn-purple { background:transparent; border:1px solid #7c3aed !important; color:#a78bfa; }
+.btn-save   { background:#0f766e; color:#fff; }
+.btn-saveas { background:#7c3aed; color:#fff; }
+.btn-checksum { background:#1e3a5f; border:1px solid #3b82f6 !important; color:#93c5fd; }
+.btn-red    { background:#7f1d1d; color:#fca5a5; border:none !important; }
+.btn-sm     { padding:3px 9px; font-size:11px; }
+
+/* ── warn ── */
+#warn-bar { display:none; background:#422006; border-bottom:1px solid #92400e; padding:7px 14px; font-size:11px; color:#fde68a; }
+
+/* ── main tabs ── */
+.main-tabs { display:flex; background:#111827; border-bottom:1px solid #1e293b; overflow-x:auto; }
+.main-tab { flex-shrink:0; padding:9px 14px; border:none; cursor:pointer; font-weight:700; font-size:12px; background:transparent; color:#64748b; border-bottom:2px solid transparent; white-space:nowrap; }
+.main-tab.active { background:#1e293b; color:#c4b5fd; border-bottom:2px solid #7c3aed; }
+.content { padding:12px 14px; flex:1; }
+.tab-panel { display:none; }
+.tab-panel.active { display:block; }
+
+/* ── common inputs ── */
+.search-input { width:100%; padding:8px 12px; border-radius:8px; font-size:13px; background:#1e293b; border:1px solid #334155; color:#e2e8f0; outline:none; margin-bottom:10px; }
+.cat-pills { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+.cat-pill { padding:4px 12px; border-radius:20px; font-size:11px; font-weight:600; cursor:pointer; border:none; background:#1e293b; color:#94a3b8; }
+.cat-pill.active { background:#7c3aed; color:#fff; }
+
+/* ── scalar fields ── */
+.field-list { background:#111827; border-radius:10px; border:1px solid #1e293b; overflow:hidden; margin-bottom:10px; }
+.field-row { display:flex; align-items:center; gap:8px; padding:7px 12px; border-bottom:1px solid #1e293b; }
+.field-row:last-child { border-bottom:none; }
+.field-dot { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+.field-label { flex:1; font-family:monospace; font-size:12px; color:#94a3b8; word-break:break-all; min-width:0; }
+.field-value { font-family:monospace; font-size:13px; color:#e2e8f0; padding:2px 8px; border-radius:4px; background:#1e293b; cursor:pointer; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block; }
+.field-value:hover { outline:1px solid #475569; }
+.field-input { width:160px; background:#0f172a; border:1px solid #7c3aed; border-radius:4px; color:#e2e8f0; padding:2px 6px; font-family:monospace; font-size:13px; text-align:right; }
+.bool-btn { padding:2px 12px; border-radius:20px; border:none; cursor:pointer; font-weight:700; font-size:12px; color:#fff; }
+
+/* ── arrays ── */
+.arr-box,.dict-box { background:#111827; border-radius:10px; border:1px solid #1e293b; margin-bottom:10px; overflow:hidden; }
+.arr-header,.dict-header { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:#0f172a; cursor:pointer; border-bottom:1px solid transparent; }
+.arr-header.open,.dict-header.open { border-bottom:1px solid #1e293b; }
+.arr-title { font-family:monospace; font-size:13px; color:#c4b5fd; font-weight:700; }
+.dict-title { font-family:monospace; font-size:13px; color:#fbbf24; font-weight:700; }
+.arr-sub { font-size:11px; color:#475569; }
+.arr-body,.dict-body { display:none; padding:10px 12px; }
+.arr-item { display:flex; align-items:center; gap:6px; padding:4px 0; border-bottom:1px solid #1e293b; }
+.arr-item:last-child { border-bottom:none; }
+.arr-item-val { flex:1; font-family:monospace; font-size:12px; color:#e2e8f0; padding:2px 6px; background:#0f172a; border-radius:3px; cursor:pointer; }
+.arr-item-val:hover { outline:1px solid #475569; }
+.arr-item-input,.dict-val-input { flex:1; background:#0f172a; border:1px solid #7c3aed; border-radius:4px; color:#e2e8f0; padding:2px 6px; font-family:monospace; font-size:12px; }
+.arr-del-btn { background:#7f1d1d; border:none; color:#fca5a5; border-radius:4px; cursor:pointer; padding:2px 7px; font-size:12px; flex-shrink:0; }
+.arr-add-row { display:flex; gap:6px; margin-top:8px; }
+.arr-add-input { flex:1; background:#0f172a; border:1px solid #334155; border-radius:6px; color:#e2e8f0; padding:5px 8px; font-family:monospace; font-size:12px; }
+.arr-add-btn { background:#164e63; border:none; color:#67e8f9; border-radius:6px; cursor:pointer; padding:5px 12px; font-size:12px; font-weight:700; }
+.dict-row { display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid #1e293b; }
+.dict-row:last-child { border-bottom:none; }
+.dict-key { width:150px; font-family:monospace; font-size:11px; color:#94a3b8; flex-shrink:0; overflow:hidden; text-overflow:ellipsis; }
+.dict-val { flex:1; font-family:monospace; font-size:12px; color:#e2e8f0; padding:2px 6px; background:#0f172a; border-radius:3px; cursor:pointer; text-align:right; }
+.dict-val:hover { outline:1px solid #475569; }
+
+/* ── EggData tab ── */
+.egg-layout { display:flex; flex-direction:column; gap:12px; }
+.char-picker { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.char-pill { padding:5px 12px; border-radius:20px; font-size:12px; font-weight:700; cursor:pointer; border:none; background:#1e293b; color:#94a3b8; }
+.char-pill.active { background:#b45309; color:#fff; }
+.char-pill.no-data { border:1px dashed #334155; background:transparent; color:#475569; }
+.char-add-wrap { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.char-add-input { background:#1e293b; border:1px solid #334155; border-radius:8px; color:#e2e8f0; padding:5px 10px; font-size:12px; outline:none; width:180px; }
+.char-add-btn { background:#14532d; border:none; color:#86efac; border-radius:8px; cursor:pointer; padding:5px 12px; font-size:12px; font-weight:700; }
+
+.char-panel { background:#111827; border-radius:12px; border:1px solid #1e293b; overflow:hidden; }
+.char-panel-header { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#0f172a; border-bottom:1px solid #1e293b; }
+.char-name { font-size:16px; font-weight:800; color:#fbbf24; letter-spacing:1px; }
+.char-total { font-size:11px; color:#64748b; }
+
+/* stat table */
+.stat-table { width:100%; border-collapse:collapse; }
+.stat-thead th { padding:6px 10px; font-size:10px; font-weight:700; color:#475569; text-align:right; border-bottom:1px solid #1e293b; background:#0f172a; text-transform:uppercase; }
+.stat-thead th:first-child { text-align:left; }
+.stat-row td { padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.04); font-size:12px; vertical-align:middle; }
+.stat-row:last-child td { border-bottom:none; }
+.stat-row.has-value { background:rgba(180,83,9,0.07); }
+.stat-row.no-value td { opacity:0.4; }
+.stat-name-cell { display:flex; align-items:center; gap:6px; }
+.stat-icon { font-size:13px; width:18px; text-align:center; flex-shrink:0; }
+.stat-label { font-size:12px; color:#e2e8f0; }
+.stat-display { text-align:right; font-family:monospace; font-size:12px; min-width:70px; }
+.stat-display.positive { color:#34d399; }
+.stat-display.negative { color:#f87171; }
+.stat-display.zero     { color:#475569; }
+.stat-eggs { text-align:right; font-family:monospace; font-size:11px; color:#64748b; min-width:60px; }
+.stat-raw-wrap { text-align:right; min-width:100px; }
+.stat-raw { font-family:monospace; font-size:12px; color:#fbbf24; cursor:pointer; padding:2px 6px; background:#1e293b; border-radius:3px; display:inline-block; }
+.stat-raw:hover { outline:1px solid #475569; }
+.stat-raw-input { width:90px; background:#0f172a; border:1px solid #f59e0b; border-radius:4px; color:#fbbf24; padding:2px 5px; font-family:monospace; font-size:12px; text-align:right; }
+.stat-reset-btn { background:none; border:none; color:#475569; cursor:pointer; font-size:11px; padding:1px 4px; }
+.stat-reset-btn:hover { color:#f87171; }
+
+.mode-toggle { display:flex; gap:4px; font-size:11px; }
+.mode-btn { padding:3px 8px; border-radius:6px; border:1px solid #334155; background:transparent; color:#64748b; cursor:pointer; font-size:11px; }
+.mode-btn.active { background:#b45309; color:#fff; border-color:#b45309; }
+
+.hint { font-size:11px; color:#475569; margin-top:6px; }
+.empty { padding:24px; text-align:center; color:#475569; }
+
+/* ── modal ── */
+#saveas-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:100; align-items:center; justify-content:center; padding:24px; }
+#saveas-modal.open { display:flex; }
+.modal-box { background:#1e293b; border-radius:14px; border:1px solid #334155; padding:24px; width:100%; max-width:340px; }
+.modal-title { font-size:16px; font-weight:800; color:#c4b5fd; margin-bottom:6px; }
+.modal-sub { font-size:12px; color:#64748b; margin-bottom:16px; }
+.modal-input { width:100%; padding:9px 12px; border-radius:8px; background:#0f172a; border:1px solid #7c3aed; color:#e2e8f0; font-size:14px; outline:none; margin-bottom:14px; }
+.modal-btns { display:flex; gap:8px; justify-content:flex-end; }
+</style>
+</head>
+<body>
+
+<!-- UPLOAD -->
+<div id="upload-screen">
+  <div style="font-size:48px;margin-bottom:12px">💾</div>
+  <div style="font-size:22px;font-weight:800;color:#c4b5fd;margin-bottom:6px">Save File Editor</div>
+  <div style="font-size:13px;color:#64748b;margin-bottom:32px;text-align:center">Supports .sav · .mdrgslot · .json<br>TyranoScript &amp; Unity save files</div>
+  <div id="drop-zone">
+    <div style="font-size:40px;margin-bottom:12px">📂</div>
+    <div style="font-size:15px;color:#94a3b8;font-weight:600">Tap to upload</div>
+    <div style="font-size:11px;color:#475569;margin-top:6px">Any JSON-based save file</div>
+  </div>
+  <input type="file" id="file-input" style="display:none">
+  <div id="error-box"></div>
+</div>
+
+<!-- EDITOR -->
+<div id="editor-screen">
+  <div class="header">
+    <div class="header-info">
+      <div class="header-title" id="hdr-title">💾 Save Editor</div>
+      <div class="header-sub" id="hdr-sub"></div>
+    </div>
+    <div class="header-btns">
+      <button class="btn btn-ghost" id="btn-new">📂</button>
+      <button class="btn btn-checksum" id="btn-checksum" style="display:none">🔐 Fix Checksum</button>
+      <button class="btn btn-save" id="btn-save">💾 Save</button>
+      <button class="btn btn-saveas" id="btn-saveas">⬇ Save As…</button>
+    </div>
+  </div>
+  <div id="warn-bar"></div>
+  <div class="main-tabs" id="main-tabs"></div>
+  <div class="content" id="main-content"></div>
+</div>
+
+<!-- SAVE AS MODAL -->
+<div id="saveas-modal">
+  <div class="modal-box">
+    <div class="modal-title">⬇ Save As</div>
+    <div class="modal-sub">Enter a filename for the download</div>
+    <input class="modal-input" id="saveas-input" type="text" placeholder="filename.sav">
+    <div class="modal-btns">
+      <button class="btn btn-ghost" id="saveas-cancel">Cancel</button>
+      <button class="btn btn-saveas" id="saveas-confirm">Download</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// EGG STAT DEFINITIONS
+// ═══════════════════════════════════════════════════════════════════
+const EGG_STATS = [
+  { key:"maxHp",     label:"Max Health",  icon:"❤️",  isPercent:false, inc:1.0    },
+  { key:"armor",     label:"Armor",       icon:"🛡",  isPercent:false, inc:0.1    },
+  { key:"regen",     label:"Recovery",    icon:"💗",  isPercent:false, inc:0.1    },
+  { key:"moveSpeed", label:"Move Speed",  icon:"🌪",  isPercent:true,  inc:0.01   },
+  { key:"power",     label:"Might",       icon:"⚔️",  isPercent:true,  inc:0.01   },
+  { key:"speed",     label:"Speed",       icon:"👟",  isPercent:true,  inc:0.01   },
+  { key:"area",      label:"Area",        icon:"🔮",  isPercent:true,  inc:0.01   },
+  { key:"cooldown",  label:"Cooldown",    icon:"⏳",  isPercent:true,  inc:-0.005 },
+  { key:"duration",  label:"Duration",    icon:"⌛",  isPercent:true,  inc:0.01   },
+  { key:"amount",    label:"Amount",      icon:"🎯",  isPercent:false, inc:0.1    },
+  { key:"magnet",    label:"Magnet",      icon:"🧲",  isPercent:true,  inc:0.1    },
+  { key:"luck",      label:"Luck",        icon:"🍀",  isPercent:true,  inc:0.01   },
+  { key:"greed",     label:"Greed",       icon:"💰",  isPercent:true,  inc:0.01   },
+  { key:"growth",    label:"Growth",      icon:"👑",  isPercent:true,  inc:0.01   },
+  { key:"curse",     label:"Curse",       icon:"💀",  isPercent:true,  inc:0.01   },
+  { key:"rerolls",   label:"Reroll",      icon:"🎲",  isPercent:false, inc:0.1    },
+  { key:"banish",    label:"Banish",      icon:"🚫",  isPercent:false, inc:0.1    },
+  { key:"skips",     label:"Skip",        icon:"⏭",  isPercent:false, inc:0.1    },
+  { key:"revivals",  label:"Revival",     icon:"💫",  isPercent:false, inc:0.1    },
+];
+
+// For each stat, how to display its bonus value
+function statDisplay(def, rawVal) {
+  if (rawVal === 0 || rawVal === undefined) return { text: "—", cls: "zero" };
+  if (def.isPercent) {
+    const pct = Math.round(rawVal * 100);
+    return { text: (pct >= 0 ? "+" : "") + pct + "%", cls: pct >= 0 ? "positive" : "negative" };
+  } else {
+    const val = Math.round(rawVal * 10) / 10;
+    return { text: (val >= 0 ? "+" : "") + val, cls: val >= 0 ? "positive" : "negative" };
+  }
+}
+
+function statEggs(def, rawVal) {
+  if (!rawVal || rawVal === 0) return 0;
+  return Math.round(Math.abs(rawVal) / Math.abs(def.inc));
+}
+
+// Convert eggs → raw
+function eggsToRaw(def, eggs) {
+  return parseFloat((eggs * def.inc).toFixed(6));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════
+let originalData = null;
+let editedData   = null;
+let fileName = "";
+let fileType = "json";
+let activeMainTab = "scalars";
+let activeCat = "All";
+let activeEditEl = null;
+let activeChar = null;      // currently selected character in EggData tab
+let eggInputMode = "eggs";  // "eggs" | "raw"
+
+// ═══════════════════════════════════════════════════════════════════
+// FILE DECODE / ENCODE
+// ═══════════════════════════════════════════════════════════════════
+function decodeFile(text) {
+  if (text.startsWith("%7B") || text.startsWith("%7b")) {
+    text = text.replace(/%u([0-9a-fA-F]{4})/gi, (_, h) => String.fromCharCode(parseInt(h,16)));
+    text = decodeURIComponent(text);
+    return { parsed: JSON.parse(text), type: "tyrano" };
+  }
+  return { parsed: JSON.parse(text), type: "json" };
+}
+function encodeFile(data, type) {
+  const j = JSON.stringify(data);
+  return type === "tyrano" ? encodeURIComponent(j) : j;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// LOAD FILE
+// ═══════════════════════════════════════════════════════════════════
+function loadFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const { parsed, type } = decodeFile(e.target.result);
+      originalData = parsed;
+      editedData   = JSON.parse(JSON.stringify(parsed));
+      fileName = file.name;
+      fileType = type;
+      activeMainTab = "scalars";
+      activeCat = "All";
+      activeChar = null;
+
+      document.getElementById("hdr-title").textContent = "💾 " + file.name;
+      buildEditorUI();
+
+      document.getElementById("upload-screen").style.display = "none";
+      document.getElementById("editor-screen").style.display = "flex";
+
+      const wb = document.getElementById("warn-bar");
+      if (editedData.checksum !== undefined) {
+        wb.style.display = "block";
+        wb.textContent = "🔐 Checksum detected — will be auto-recalculated on every Save.";
+        document.getElementById("btn-checksum").style.display = "inline-block";
+      } else {
+        wb.style.display = "none";
+      }
+    } catch(err) {
+      const eb = document.getElementById("error-box");
+      eb.style.display = "block";
+      eb.textContent = "⚠️ Failed to parse: " + err.message;
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CLASSIFY KEYS
+// ═══════════════════════════════════════════════════════════════════
+function classifyKeys(obj) {
+  const scalars={}, arrays={}, dicts={};
+  for (const [k,v] of Object.entries(obj)) {
+    if (Array.isArray(v)) arrays[k]=v;
+    else if (v !== null && typeof v === "object") dicts[k]=v;
+    else scalars[k]=v;
+  }
+  return { scalars, arrays, dicts };
+}
+
+function buildScalarCats(scalars) {
+  const keys = Object.keys(scalars);
+  const groups = {
+    "💰 Economy":   k => /coin|gold|money|gem|point|cash|credit/i.test(k),
+    "📊 Stats":     k => /kill|count|score|fever|heal|survive|lap|hit|luck|run|top|total|lifetime|played/i.test(k),
+    "🎮 Selection": k => /^selected|^chosen/i.test(k),
+    "🔊 Audio":     k => /sound|music|volume|bgm/i.test(k),
+    "🖥 Display":   k => /screen|visual|display|flash|pixel|border|lighting|blood|shake|color|colour|tint|font|icon|map|indicator|outline|physics|invert/i.test(k),
+    "🏆 Progress":  k => /has|unlock|bought|complete|seen|fixed|played|used|didit/i.test(k),
+    "⚙️ Settings":  k => /language|platform|version|date|eula|sync|mode|type|joystick|hide|show|cheats|enabled|visible/i.test(k),
+  };
+  const cats = { "All": keys };
+  const matched = new Set();
+  for (const [cat, test] of Object.entries(groups)) {
+    const m = keys.filter(test);
+    if (m.length) { cats[cat] = m; m.forEach(k => matched.add(k)); }
+  }
+  const other = keys.filter(k => !matched.has(k));
+  if (other.length) cats["Other"] = other;
+  return cats;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// BUILD EDITOR UI
+// ═══════════════════════════════════════════════════════════════════
+function buildEditorUI() {
+  const { scalars, arrays, dicts } = classifyKeys(editedData);
+  const tabsEl = document.getElementById("main-tabs");
+  const contentEl = document.getElementById("main-content");
+  tabsEl.innerHTML = "";
+  contentEl.innerHTML = "";
+
+  const hasEgg = editedData.EggData && typeof editedData.EggData === "object" && !Array.isArray(editedData.EggData);
+
+  const tabs = [
+    { id:"scalars", label:`📋 Values (${Object.keys(scalars).length})`,  fn: () => renderScalars(scalars) },
+    { id:"arrays",  label:`📃 Lists (${Object.keys(arrays).length})`,   fn: () => renderArrays(arrays)   },
+    { id:"dicts",   label:`🗂 Tables (${Object.keys(dicts).length})`,   fn: () => renderDicts(dicts)      },
+  ];
+  if (hasEgg) {
+    const charCount = Object.keys(editedData.EggData).filter(k => k !== "total" && typeof editedData.EggData[k] === "object").length;
+    tabs.push({ id:"egg", label:`🥚 Egg Stats (${charCount})`, fn: () => renderEggTab() });
+  }
+
+  tabs.forEach(t => {
+    const btn = document.createElement("button");
+    btn.className = "main-tab" + (t.id === activeMainTab ? " active" : "");
+    btn.textContent = t.label;
+    btn.dataset.tabid = t.id;
+    btn.onclick = () => {
+      activeMainTab = t.id;
+      activeCat = "All";
+      tabsEl.querySelectorAll(".main-tab").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      contentEl.innerHTML = "";
+      t.fn();
+    };
+    tabsEl.appendChild(btn);
+    if (t.id === activeMainTab) setTimeout(t.fn, 0);
+  });
+
+  updateHeaderSub(scalars);
+}
+
+function updateHeaderSub(scalars) {
+  const parts = [];
+  if (scalars.Platform) parts.push(scalars.Platform);
+  if (scalars.Version !== undefined) parts.push("v" + scalars.Version);
+  if (scalars.Coins !== undefined) parts.push("Coins: " + Math.floor(scalars.Coins).toLocaleString());
+  if (scalars.love !== undefined) parts.push("Love: " + scalars.love);
+  if (scalars.name) parts.push(scalars.name);
+  document.getElementById("hdr-sub").textContent = parts.join("  ·  ");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCALARS TAB
+// ═══════════════════════════════════════════════════════════════════
+function getType(v) {
+  if (typeof v === "boolean") return "bool";
+  if (typeof v === "number") return "num";
+  return "str";
+}
+const DOT_COLOR = { bool:"#a78bfa", num:"#34d399", str:"#60a5fa" };
+
+function renderScalars(scalars) {
+  const el = document.getElementById("main-content");
+  const cats = buildScalarCats(scalars);
+
+  const searchEl = makeEl("input","search-input"); searchEl.placeholder = "Search key or value…"; el.appendChild(searchEl);
+  const pillsEl = makeEl("div","cat-pills"); el.appendChild(pillsEl);
+  const listEl  = makeEl("div","field-list"); el.appendChild(listEl);
+  const hint = makeEl("div","hint"); hint.textContent = "🟢 number  🟣 bool  🔵 string  ·  Tap value to edit"; el.appendChild(hint);
+
+  function buildPills(cur) {
+    pillsEl.innerHTML = "";
+    for (const [cat,keys] of Object.entries(cats)) {
+      if (!keys.length) continue;
+      const btn = makeEl("button","cat-pill" + (cat===cur?" active":""));
+      btn.textContent = `${cat} (${keys.length})`;
+      btn.onclick = () => { activeCat=cat; buildPills(cat); renderList(cat,""); searchEl.value=""; };
+      pillsEl.appendChild(btn);
+    }
+  }
+
+  function renderList(cat, search) {
+    listEl.innerHTML = "";
+    const keys = search
+      ? Object.keys(scalars).filter(k => k.toLowerCase().includes(search) || String(scalars[k]).toLowerCase().includes(search))
+      : (cats[cat]||[]);
+    if (!keys.length) { listEl.innerHTML='<div class="empty">No results</div>'; return; }
+    keys.forEach(k => {
+      const v = editedData[k];
+      if (v===undefined || Array.isArray(v) || (v!==null && typeof v==="object")) return;
+      const type = getType(v);
+      const row = makeEl("div","field-row");
+      const dot = makeEl("div","field-dot"); dot.style.background = DOT_COLOR[type];
+      const lbl = makeEl("span","field-label"); lbl.textContent = k;
+      const wrap = makeEl("div",""); wrap.style.flexShrink="0";
+      if (type==="bool") {
+        const btn=makeEl("button","bool-btn");
+        btn.style.background=v?"#22c55e":"#ef4444"; btn.textContent=v?"TRUE":"FALSE";
+        btn.onclick=()=>{ editedData[k]=!editedData[k]; btn.style.background=editedData[k]?"#22c55e":"#ef4444"; btn.textContent=editedData[k]?"TRUE":"FALSE"; };
+        wrap.appendChild(btn);
+      } else {
+        const span=makeEl("span","field-value"); span.textContent=String(v); span.title=String(v);
+        span.onclick=()=>startEditScalar(span,k,type);
+        wrap.appendChild(span);
+      }
+      row.appendChild(dot); row.appendChild(lbl); row.appendChild(wrap);
+      listEl.appendChild(row);
+    });
+    if (!listEl.children.length) listEl.innerHTML='<div class="empty">No editable values</div>';
+  }
+
+  buildPills(activeCat);
+  renderList(activeCat,"");
+  searchEl.addEventListener("input",()=>{
+    const q=searchEl.value.toLowerCase().trim();
+    if(q){buildPills("All");renderList("All",q);}else{buildPills(activeCat);renderList(activeCat,"");}
+  });
+}
+
+function startEditScalar(span,key,type) {
+  commitActiveEdit();
+  const input=makeEl("input","field-input");
+  input.value=String(editedData[key]); input.type=type==="num"?"number":"text";
+  span.replaceWith(input); input.focus(); input.select();
+  activeEditEl={input,span,key};
+  function commit(){ const r=input.value; editedData[key]=type==="num"?(r.includes(".")?parseFloat(r)||0:parseInt(r)||0):r; span.textContent=String(editedData[key]); span.title=String(editedData[key]); try{input.replaceWith(span);}catch{} activeEditEl=null; const {scalars}=classifyKeys(editedData); updateHeaderSub(scalars); }
+  input.addEventListener("blur",commit);
+  input.addEventListener("keydown",e=>{ if(e.key==="Enter")input.blur(); if(e.key==="Escape"){try{input.replaceWith(span);}catch{} activeEditEl=null;} });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ARRAYS TAB
+// ═══════════════════════════════════════════════════════════════════
+function renderArrays(arrays) {
+  const el = document.getElementById("main-content");
+  const s=makeEl("input","search-input"); s.placeholder="Filter list names…"; el.appendChild(s);
+  const container=makeEl("div",""); el.appendChild(container);
+
+  function build(filter) {
+    container.innerHTML="";
+    const keys=Object.keys(arrays).filter(k=>!filter||k.toLowerCase().includes(filter));
+    if(!keys.length){container.innerHTML='<div class="empty">No results</div>';return;}
+    keys.forEach(k=>{
+      const arr=editedData[k];
+      const box=makeEl("div","arr-box");
+      const hdr=makeEl("div","arr-header"); hdr.style.borderBottom="none";
+      const titleEl=makeEl("span","arr-title"); titleEl.textContent=k;
+      const countEl=makeEl("span","arr-sub"); countEl.textContent=arr.length+" items";
+      const arrow=makeEl("span",""); arrow.textContent="▶"; arrow.style.cssText="color:#475569;font-size:11px;transition:transform .2s";
+      const left=makeEl("div",""); left.style.display="flex"; left.style.gap="8px"; left.style.alignItems="center";
+      left.appendChild(titleEl); left.appendChild(countEl); hdr.appendChild(left); hdr.appendChild(arrow);
+      const body=makeEl("div","arr-body");
+      hdr.onclick=()=>{
+        const open=!body.style.display||body.style.display==="none";
+        body.style.display=open?"block":"none"; hdr.classList.toggle("open",open); arrow.style.transform=open?"rotate(90deg)":"";
+        if(open&&!body.dataset.built){body.dataset.built="1";buildArrBody(body,k);}
+      };
+      box.appendChild(hdr); box.appendChild(body); container.appendChild(box);
+    });
+  }
+
+  function buildArrBody(body,key){
+    const list=makeEl("div","");
+    function refresh(){
+      list.innerHTML="";
+      editedData[key].forEach((val,i)=>{
+        const row=makeEl("div","arr-item");
+        const idx=makeEl("span",""); idx.style.cssText="font-size:10px;color:#475569;width:22px;flex-shrink:0"; idx.textContent=i;
+        const valEl=makeEl("span","arr-item-val"); valEl.textContent=String(val);
+        valEl.onclick=()=>startEditArrItem(valEl,key,i);
+        const del=makeEl("button","arr-del-btn"); del.textContent="✕";
+        del.onclick=()=>{editedData[key].splice(i,1);refresh();updateCount();};
+        row.appendChild(idx);row.appendChild(valEl);row.appendChild(del);list.appendChild(row);
+      });
+      if(!editedData[key].length)list.innerHTML='<div style="padding:8px;text-align:center;color:#475569;font-size:12px">Empty list</div>';
+    }
+    function updateCount(){body.closest(".arr-box").querySelector(".arr-sub").textContent=editedData[key].length+" items";}
+    refresh();
+    body.appendChild(list);
+    const addRow=makeEl("div","arr-add-row");
+    const addIn=makeEl("input","arr-add-input"); addIn.placeholder="New value…";
+    const addBtn=makeEl("button","arr-add-btn"); addBtn.textContent="+ Add";
+    addBtn.onclick=()=>{if(!addIn.value.trim())return;const r=addIn.value.trim();const v=!isNaN(r)?(r.includes(".")?parseFloat(r):parseInt(r)):r;editedData[key].push(v);addIn.value="";refresh();updateCount();};
+    addIn.addEventListener("keydown",e=>{if(e.key==="Enter")addBtn.click();});
+    addRow.appendChild(addIn);addRow.appendChild(addBtn);body.appendChild(addRow);
+  }
+
+  build(""); s.addEventListener("input",()=>build(s.value.toLowerCase().trim()));
+}
+
+function startEditArrItem(span,key,idx){
+  const input=makeEl("input","arr-item-input"); input.value=String(editedData[key][idx]);
+  span.replaceWith(input); input.focus(); input.select();
+  function commit(){const r=input.value;editedData[key][idx]=!isNaN(r)&&r.trim()!==""?(r.includes(".")?parseFloat(r):parseInt(r)):r;span.textContent=String(editedData[key][idx]);try{input.replaceWith(span);}catch{}}
+  input.addEventListener("blur",commit);input.addEventListener("keydown",e=>{if(e.key==="Enter")input.blur();if(e.key==="Escape"){try{input.replaceWith(span);}catch{}}});
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DICTS TAB
+// ═══════════════════════════════════════════════════════════════════
+function renderDicts(dicts) {
+  const el=document.getElementById("main-content");
+  const s=makeEl("input","search-input"); s.placeholder="Filter table names…"; el.appendChild(s);
+  const container=makeEl("div",""); el.appendChild(container);
+
+  function build(filter){
+    container.innerHTML="";
+    const keys=Object.keys(dicts).filter(k=>k!=="EggData"&&(!filter||k.toLowerCase().includes(filter)));
+    if(!keys.length){container.innerHTML='<div class="empty">No results</div>';return;}
+    keys.forEach(k=>{
+      const dict=editedData[k]; if(typeof dict!=="object"||dict===null||Array.isArray(dict))return;
+      const entries=Object.entries(dict).filter(([,v])=>typeof v!=="object"||v===null);
+      const box=makeEl("div","dict-box");
+      const hdr=makeEl("div","dict-header");
+      const title=makeEl("span","dict-title"); title.textContent=k;
+      const sub=makeEl("span","arr-sub"); sub.textContent=entries.length+" entries";
+      const arrow=makeEl("span",""); arrow.textContent="▶"; arrow.style.cssText="color:#475569;font-size:11px;transition:transform .2s";
+      const left=makeEl("div",""); left.style.display="flex"; left.style.gap="8px"; left.style.alignItems="center";
+      left.appendChild(title); left.appendChild(sub); hdr.appendChild(left); hdr.appendChild(arrow);
+      const body=makeEl("div","dict-body"); body.style.padding="10px 12px";
+      hdr.onclick=()=>{
+        const open=!body.style.display||body.style.display==="none";
+        body.style.display=open?"block":"none"; hdr.classList.toggle("open",open); arrow.style.transform=open?"rotate(90deg)":"";
+        if(open&&!body.dataset.built){body.dataset.built="1";buildDictBody(body,k,entries);}
+      };
+      box.appendChild(hdr);box.appendChild(body);container.appendChild(box);
+    });
+  }
+
+  function buildDictBody(body,objKey,entries){
+    if(!entries.length){body.innerHTML='<div class="empty" style="font-size:12px">No editable entries</div>';return;}
+    entries.forEach(([dk,dv])=>{
+      const row=makeEl("div","dict-row");
+      const kEl=makeEl("span","dict-key"); kEl.textContent=dk; kEl.title=dk;
+      const vEl=makeEl("span","dict-val"); vEl.textContent=String(dv);
+      vEl.onclick=()=>startEditDictVal(vEl,objKey,dk);
+      row.appendChild(kEl);row.appendChild(vEl);body.appendChild(row);
+    });
+  }
+
+  build(""); s.addEventListener("input",()=>build(s.value.toLowerCase().trim()));
+}
+
+function startEditDictVal(span,objKey,dictKey){
+  const cur=editedData[objKey][dictKey]; const type=typeof cur==="number"?"num":"str";
+  const input=makeEl("input","dict-val-input"); input.style.textAlign="right"; input.value=String(cur); input.type=type==="num"?"number":"text";
+  span.replaceWith(input); input.focus(); input.select();
+  function commit(){const r=input.value;editedData[objKey][dictKey]=type==="num"?(r.includes(".")?parseFloat(r)||0:parseInt(r)||0):r;span.textContent=String(editedData[objKey][dictKey]);try{input.replaceWith(span);}catch{}}
+  input.addEventListener("blur",commit);input.addEventListener("keydown",e=>{if(e.key==="Enter")input.blur();if(e.key==="Escape"){try{input.replaceWith(span);}catch{}}});
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EGG STATS TAB
+// ═══════════════════════════════════════════════════════════════════
+function renderEggTab() {
+  const el = document.getElementById("main-content");
+  el.innerHTML = "";
+  const egg = editedData.EggData;
+
+  // Collect all known character names
+  const inEgg = Object.keys(egg).filter(k => k !== "total" && typeof egg[k] === "object");
+  const knownChars = new Set([
+    ...(editedData.BoughtCharacters || []),
+    ...(editedData.UnlockedCharacters || []),
+    ...inEgg
+  ]);
+
+  if (!activeChar || (!inEgg.includes(activeChar) && ![...knownChars].includes(activeChar))) {
+    activeChar = inEgg[0] || null;
+  }
+
+  // ── Top section: character picker + add ──────────────────────────
+  const topWrap = makeEl("div",""); topWrap.style.marginBottom="12px";
+
+  // Input mode toggle
+  const modeWrap = makeEl("div",""); modeWrap.style.cssText="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;";
+  const modeLabel = makeEl("span",""); modeLabel.style.cssText="font-size:11px;color:#475569"; modeLabel.textContent="Edit mode:";
+  const modeBtns = makeEl("div","mode-toggle");
+  ["eggs","raw"].forEach(m=>{
+    const btn=makeEl("button","mode-btn"+(eggInputMode===m?" active":""));
+    btn.textContent=m==="eggs"?"🥚 By Eggs":"🔢 Raw Value";
+    btn.onclick=()=>{ eggInputMode=m; renderEggTab(); };
+    modeBtns.appendChild(btn);
+  });
+  modeWrap.appendChild(modeLabel); modeWrap.appendChild(modeBtns);
+  topWrap.appendChild(modeWrap);
+
+  // Character pills
+  const pills = makeEl("div","char-picker"); pills.style.marginBottom="8px";
+  inEgg.forEach(charName=>{
+    const pill=makeEl("button","char-pill"+(charName===activeChar?" active":""));
+    pill.textContent=charName;
+    pill.onclick=()=>{ activeChar=charName; renderEggTab(); };
+    pills.appendChild(pill);
+  });
+  topWrap.appendChild(pills);
+
+  // Add character row
+  const addWrap=makeEl("div","char-add-wrap");
+  const addIn=makeEl("input","char-add-input"); addIn.placeholder="Character name (e.g. ANTONIO)"; addIn.list="char-suggestions";
+  const datalist=makeEl("datalist",""); datalist.id="char-suggestions";
+  [...knownChars].filter(c=>!inEgg.includes(c)).forEach(c=>{ const opt=makeEl("option",""); opt.value=c; datalist.appendChild(opt); });
+  addIn.appendChild(datalist);
+  const addBtn=makeEl("button","char-add-btn"); addBtn.textContent="+ Add Character";
+  addBtn.onclick=()=>{
+    const name=(addIn.value||"").trim().toUpperCase().replace(/\s+/g,"_");
+    if(!name)return;
+    if(!egg[name]) egg[name]={};
+    activeChar=name;
+    addIn.value="";
+    // rebuild tab label
+    const charCount=Object.keys(egg).filter(k=>k!=="total"&&typeof egg[k]==="object").length;
+    document.querySelector('[data-tabid="egg"]').textContent=`🥚 Egg Stats (${charCount})`;
+    renderEggTab();
+  };
+  addWrap.appendChild(addIn); addWrap.appendChild(datalist); addWrap.appendChild(addBtn);
+  topWrap.appendChild(addWrap);
+  el.appendChild(topWrap);
+
+  if (!activeChar) {
+    const empty=makeEl("div","empty"); empty.textContent="No characters yet. Add one above."; el.appendChild(empty); return;
+  }
+
+  // ── Character panel ───────────────────────────────────────────────
+  const charData = egg[activeChar] || {};
+  const panel=makeEl("div","char-panel");
+
+  // Header
+  const panelHdr=makeEl("div","char-panel-header");
+  const nameEl=makeEl("span","char-name"); nameEl.textContent=activeChar;
+  const totalEl=makeEl("span","char-total"); totalEl.textContent="stored total: "+(charData.total||0);
+  const removeBtn=makeEl("button","btn btn-red btn-sm"); removeBtn.textContent="✕ Remove";
+  removeBtn.onclick=()=>{
+    if(!confirm(`Remove ${activeChar} from EggData?`))return;
+    delete egg[activeChar];
+    activeChar=null;
+    const charCount=Object.keys(egg).filter(k=>k!=="total"&&typeof egg[k]==="object").length;
+    document.querySelector('[data-tabid="egg"]').textContent=`🥚 Egg Stats (${charCount})`;
+    renderEggTab();
+  };
+  panelHdr.appendChild(nameEl); panelHdr.appendChild(totalEl); panelHdr.appendChild(removeBtn);
+  panel.appendChild(panelHdr);
+
+  // Mode note
+  const modeNote=makeEl("div",""); modeNote.style.cssText="padding:6px 14px;font-size:11px;background:#0f172a;color:#475569;border-bottom:1px solid #1e293b;";
+  modeNote.innerHTML = eggInputMode==="eggs"
+    ? "✏️ Edit by <b style='color:#f59e0b'>egg count</b>. Each egg adds its per-egg increment to the stored value."
+    : "✏️ Edit the <b style='color:#f59e0b'>raw stored float</b>. Egg bonus = value shown in-game (excludes character base stat).";
+  panel.appendChild(modeNote);
+
+  // Stat table
+  const tableWrap=makeEl("div",""); tableWrap.style.overflowX="auto";
+  const table=makeEl("table","stat-table");
+  const thead=makeEl("thead","stat-thead");
+  const headerRow=makeEl("tr","");
+  [["Stat","left"],["Egg Bonus","right"],["Eggs","right"],eggInputMode==="eggs"?["Eggs (edit)","right"]:["Raw Value","right"],["","right"]].forEach(([t,align])=>{
+    const th=makeEl("th",""); th.textContent=t; th.style.textAlign=align; headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow); table.appendChild(thead);
+
+  const tbody=makeEl("tbody","");
+  EGG_STATS.forEach(def=>{
+    const rawVal = charData[def.key] ?? 0;
+    const hasVal = rawVal !== 0;
+    const {text, cls} = statDisplay(def, rawVal);
+    const eggs = statEggs(def, rawVal);
+
+    const row=makeEl("tr","stat-row"+(hasVal?" has-value":" no-value"));
+
+    // Stat name
+    const nameCell=makeEl("td","");
+    const nameInner=makeEl("div","stat-name-cell");
+    const icon=makeEl("span","stat-icon"); icon.textContent=def.icon;
+    const label=makeEl("span","stat-label"); label.textContent=def.label;
+    nameInner.appendChild(icon);nameInner.appendChild(label);nameCell.appendChild(nameInner);
+
+    // Display
+    const dispCell=makeEl("td","stat-display "+cls); dispCell.textContent=text;
+
+    // Eggs count
+    const eggsCell=makeEl("td","stat-eggs"); eggsCell.textContent=hasVal?(eggs+"x 🥚"):"—";
+
+    // Editable value (eggs or raw)
+    const editCell=makeEl("td","stat-raw-wrap");
+    if (eggInputMode==="eggs") {
+      const span=makeEl("span","stat-raw"); span.textContent=String(eggs);
+      span.onclick=()=>startEditEggStat(span, def, activeChar, "eggs", dispCell, eggsCell);
+      editCell.appendChild(span);
+    } else {
+      const span=makeEl("span","stat-raw"); span.textContent=rawVal.toFixed(6);
+      span.onclick=()=>startEditEggStat(span, def, activeChar, "raw", dispCell, eggsCell);
+      editCell.appendChild(span);
+    }
+
+    // Reset button
+    const resetCell=makeEl("td","");
+    if (hasVal) {
+      const btn=makeEl("button","stat-reset-btn"); btn.title="Reset to default (0)"; btn.textContent="↺";
+      btn.onclick=()=>{
+        egg[activeChar][def.key]=0;
+        delete egg[activeChar][def.key];
+        row.className="stat-row no-value";
+        dispCell.className="stat-display zero"; dispCell.textContent="—";
+        eggsCell.textContent="—";
+        const editSpan=editCell.querySelector(".stat-raw");
+        if(editSpan)editSpan.textContent=eggInputMode==="eggs"?"0":"0.000000";
+        btn.remove();
+      };
+      resetCell.appendChild(btn);
+    }
+
+    row.appendChild(nameCell); row.appendChild(dispCell); row.appendChild(eggsCell);
+    row.appendChild(editCell); row.appendChild(resetCell);
+    tbody.appendChild(row);
+  });
+
+  // Unknown keys (custom stats not in EGG_STATS list)
+  const knownKeys = new Set(EGG_STATS.map(d=>d.key)); knownKeys.add("total");
+  Object.keys(charData).forEach(k=>{
+    if(knownKeys.has(k))return;
+    const v=charData[k]; const row=makeEl("tr","stat-row has-value");
+    const nc=makeEl("td",""); const ni=makeEl("div","stat-name-cell");
+    const ic=makeEl("span","stat-icon"); ic.textContent="❓";
+    const lb=makeEl("span","stat-label"); lb.textContent=k;
+    ni.appendChild(ic); ni.appendChild(lb); nc.appendChild(ni);
+    const dc=makeEl("td","stat-display positive"); dc.textContent=String(v);
+    const ec=makeEl("td","stat-eggs"); ec.textContent="?";
+    const ew=makeEl("td","stat-raw-wrap"); const sp=makeEl("span","stat-raw"); sp.textContent=String(v);
+    sp.onclick=()=>startEditEggRaw(sp,k,activeChar,dc);
+    ew.appendChild(sp); const rc=makeEl("td","");
+    row.appendChild(nc);row.appendChild(dc);row.appendChild(ec);row.appendChild(ew);row.appendChild(rc);
+    tbody.appendChild(row);
+  });
+
+  table.appendChild(tbody); tableWrap.appendChild(table); panel.appendChild(tableWrap);
+  el.appendChild(panel);
+
+  // Hint
+  const hint=makeEl("div","hint"); hint.style.marginTop="8px";
+  hint.innerHTML="💡 <b>Egg bonus</b> = eggs contribution only. In-game display = egg bonus + character base stat.<br>🔄 Reset = removes this stat bonus (back to default).";
+  el.appendChild(hint);
+}
+
+function startEditEggStat(span, def, charName, mode, dispCell, eggsCell) {
+  commitActiveEdit();
+  const egg = editedData.EggData[charName];
+  const input=makeEl("input","stat-raw-input");
+  const currentRaw = egg[def.key] ?? 0;
+  input.value = mode==="eggs" ? String(Math.round(Math.abs(currentRaw)/Math.abs(def.inc))) : currentRaw.toFixed(6);
+  input.type="number";
+  span.replaceWith(input); input.focus(); input.select();
+  activeEditEl={input,span};
+
+  function commit(){
+    const val=parseFloat(input.value)||0;
+    let newRaw;
+    if(mode==="eggs"){
+      newRaw = parseFloat((val * def.inc).toFixed(6));
+    } else {
+      newRaw = val;
+    }
+    if(newRaw===0){
+      delete egg[def.key];
+    } else {
+      egg[def.key]=newRaw;
+    }
+    // update display
+    span.textContent = mode==="eggs" ? String(val) : newRaw.toFixed(6);
+    const {text,cls}=statDisplay(def,newRaw);
+    dispCell.className="stat-display "+cls; dispCell.textContent=text;
+    const eggs2=statEggs(def,newRaw);
+    eggsCell.textContent=newRaw!==0?(eggs2+"x 🥚"):"—";
+    const parentRow=input.closest("tr")||span.closest&&span.closest("tr");
+    try{input.replaceWith(span);}catch{}
+    activeEditEl=null;
+  }
+  input.addEventListener("blur",commit);
+  input.addEventListener("keydown",e=>{if(e.key==="Enter")input.blur();if(e.key==="Escape"){try{input.replaceWith(span);}catch{} activeEditEl=null;}});
+}
+
+function startEditEggRaw(span,key,charName,dispCell){
+  commitActiveEdit();
+  const egg=editedData.EggData[charName];
+  const input=makeEl("input","stat-raw-input"); input.value=String(egg[key]??0); input.type="number";
+  span.replaceWith(input); input.focus(); input.select();
+  activeEditEl={input,span};
+  function commit(){const v=parseFloat(input.value)||0;egg[key]=v;span.textContent=String(v);dispCell.textContent=String(v);try{input.replaceWith(span);}catch{} activeEditEl=null;}
+  input.addEventListener("blur",commit);input.addEventListener("keydown",e=>{if(e.key==="Enter")input.blur();if(e.key==="Escape"){try{input.replaceWith(span);}catch{} activeEditEl=null;}});
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════════════════════
+function makeEl(tag, cls) {
+  const el=document.createElement(tag);
+  if(cls)el.className=cls;
+  return el;
+}
+function commitActiveEdit(){
+  if(activeEditEl){try{activeEditEl.input.blur();}catch{} activeEditEl=null;}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CHECKSUM (Vampire Survivors)
+// Formula: SHA256 of the JSON string with checksum value set to ""
+// ═══════════════════════════════════════════════════════════════════
+async function computeVSChecksum(jsonString) {
+  const forHashing = jsonString.replace(/"checksum":"[^"]*"/, '"checksum":""');
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(forHashing));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DOWNLOAD
+// ═══════════════════════════════════════════════════════════════════
+async function doDownload(name) {
+  commitActiveEdit();
+
+  // Disable buttons while processing
+  const btnSave   = document.getElementById("btn-save");
+  const btnSaveAs = document.getElementById("btn-saveas");
+  const origSave = btnSave.textContent;
+  btnSave.textContent = "⏳…"; btnSave.disabled = true;
+  btnSaveAs.disabled = true;
+
+  try {
+    let out = encodeFile(editedData, fileType);
+
+    // Auto-recalculate checksum for VS saves
+    if (fileType === "json" && editedData.checksum !== undefined) {
+      const newChecksum = await computeVSChecksum(out);
+      editedData.checksum = newChecksum;
+      out = encodeFile(editedData, fileType); // re-encode with new checksum
+      // Show checksum briefly in warn bar
+      const wb = document.getElementById("warn-bar");
+      wb.style.display = "block";
+      wb.style.background = "#052e16";
+      wb.style.borderColor = "#16a34a";
+      wb.style.color = "#86efac";
+      wb.textContent = "✅ Checksum recalculated: " + newChecksum;
+      setTimeout(()=>{
+        wb.style.background=""; wb.style.borderColor=""; wb.style.color="";
+        wb.style.display="none";
+      }, 4000);
+    }
+
+    if (window.AndroidSave) {
+      window.AndroidSave.saveFile(name, out);
+    } else {
+      if (window.AndroidSave) {
+      window.AndroidSave.saveFile(name, out);
+    } else {
+      const blob = new Blob([out], {type:"application/octet-stream"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+    }
+    }
+  } finally {
+    btnSave.textContent = origSave; btnSave.disabled = false;
+    btnSaveAs.disabled = false;
+  }
+}
+
+document.getElementById("btn-save").onclick=()=>doDownload(fileName);
+document.getElementById("btn-saveas").onclick=()=>{
+  document.getElementById("saveas-input").value=fileName;
+  document.getElementById("saveas-modal").classList.add("open");
+  setTimeout(()=>document.getElementById("saveas-input").focus(),50);
+};
+document.getElementById("saveas-cancel").onclick=()=>document.getElementById("saveas-modal").classList.remove("open");
+document.getElementById("saveas-confirm").onclick=()=>{
+  const n=document.getElementById("saveas-input").value.trim()||fileName;
+  document.getElementById("saveas-modal").classList.remove("open");
+  doDownload(n);
+};
+document.getElementById("saveas-input").addEventListener("keydown",e=>{if(e.key==="Enter")document.getElementById("saveas-confirm").click();if(e.key==="Escape")document.getElementById("saveas-cancel").click();});
+
+// Fix Checksum button — updates checksum in editedData and shows result WITHOUT saving
+document.getElementById("btn-checksum").onclick = async () => {
+  const btn = document.getElementById("btn-checksum");
+  const wb  = document.getElementById("warn-bar");
+  commitActiveEdit();
+  btn.textContent = "⏳ Calculating…";
+  btn.disabled = true;
+  try {
+    // Compute checksum on current state
+    const json = encodeFile(editedData, fileType);
+    const newChecksum = await computeVSChecksum(json);
+    editedData.checksum = newChecksum;
+    // If the checksum field is visible in the scalars list, refresh it
+    const spans = document.querySelectorAll(".field-value");
+    spans.forEach(span => {
+      const row = span.closest(".field-row");
+      if (row && row.querySelector(".field-label") && row.querySelector(".field-label").textContent === "checksum") {
+        span.textContent = newChecksum;
+        span.title = newChecksum;
+      }
+    });
+    wb.style.display = "block";
+    wb.style.background = "#052e16";
+    wb.style.borderColor = "#16a34a";
+    wb.style.color = "#86efac";
+    wb.textContent = "✅ Checksum updated: " + newChecksum;
+    setTimeout(() => {
+      wb.style.background = "#422006"; wb.style.borderColor = "#92400e"; wb.style.color = "#fde68a";
+      wb.textContent = "🔐 Checksum detected — will be auto-recalculated on every Save.";
+    }, 5000);
+  } catch(e) {
+    wb.style.display = "block";
+    wb.textContent = "❌ Checksum failed: " + e.message;
+  } finally {
+    btn.textContent = "🔐 Fix Checksum";
+    btn.disabled = false;
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// UPLOAD LISTENERS
+// ═══════════════════════════════════════════════════════════════════
+document.getElementById("drop-zone").onclick=()=>document.getElementById("file-input").click();
+document.getElementById("file-input").onchange=e=>loadFile(e.target.files[0]);
+document.getElementById("drop-zone").addEventListener("dragover",e=>{e.preventDefault();e.currentTarget.classList.add("drag-over");});
+document.getElementById("drop-zone").addEventListener("dragleave",e=>e.currentTarget.classList.remove("drag-over"));
+document.getElementById("drop-zone").addEventListener("drop",e=>{e.preventDefault();e.currentTarget.classList.remove("drag-over");loadFile(e.dataTransfer.files[0]);});
+document.getElementById("btn-new").onclick=()=>{
+  document.getElementById("editor-screen").style.display="none";
+  document.getElementById("upload-screen").style.display="flex";
+  document.getElementById("file-input").value="";
+  originalData=null;editedData=null;
+  document.getElementById('btn-checksum').style.display='none';
+};
+</script>
+</body>
+</html>
